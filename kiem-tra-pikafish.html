@@ -1,0 +1,11 @@
+<!DOCTYPE html><html lang="vi"><meta charset="utf-8"><title>Kiểm tra Pikafish</title><h2>Kiểm tra Pikafish WASM</h2><pre id="log">Đang chạy...</pre><script>
+const log = x => { document.getElementById('log').textContent += '\n' + x; console.log(x); };
+log('crossOriginIsolated=' + crossOriginIsolated + ', SharedArrayBuffer=' + (typeof SharedArrayBuffer));
+let w = new Worker('./pikafish-bridge.js');
+w.onmessage = e => { const m=e.data; log(JSON.stringify(m)); };
+w.onerror = e => log('ERROR: ' + e.message);
+w.postMessage({cmd:'init_worker'});
+// Ván mới ở thế ban đầu, hỏi nước đi của Đỏ
+const b=['rnbakabnr','.........','.c.....c.','p.p.p.p.p','.........','.........','P.P.P.P.P','.C.....C.','.........','RNBAKABNR'].map(r=>r.split('').map(ch=>ch==='.'?null:ch));
+w.postMessage({board:b,currentAISide:true,uciMoves:[],difficulty:1,isHint:true});
+</script></html>
