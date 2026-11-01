@@ -3186,7 +3186,7 @@ window.onload = () => {
   resetBoardState(true);
   requestAnimationFrame(() => { resize(); requestRedraw(); });
 };
-  // Tính năng cho phép người chơi can thiệp / sửa trực tiếp nước đi của AI
+// Tính năng cho phép người chơi can thiệp / sửa trực tiếp nước đi của AI (Tự do chọn quân khác)
 function overrideLastAiMove() {
   if (aiBusy) {
     toast('Đợi AI tính xong đã nhé!');
@@ -3197,11 +3197,8 @@ function overrideLastAiMove() {
     return;
   }
 
-  // Lấy nước đi gần nhất
+  // Lấy nước đi gần nhất của AI
   const lastMoveRecord = history[history.length - 1];
-
-  // Kiểm tra xem nước gần nhất có phải do AI vừa đi không
-  // (Trong chế độ PVE, nếu bạn cầm Đỏ thì AI đi chẵn/đen, bạn cầm Đen thì AI đi lẻ/đỏ)
   const isAiMove = gameMode === 'pve' && (lastMoveRecord.red === aiIsRed);
 
   if (!isAiMove && gameMode !== 'aiai' && gameMode !== 'pvp') {
@@ -3212,11 +3209,11 @@ function overrideLastAiMove() {
   hideVictoryModal();
   stopBackgroundPonder();
 
-  // 1. Hoàn tác nước đi sai của AI để trả quân về vị trí cũ trước khi AI đi
+  // 1. Hoàn tác nước đi của AI để đưa bàn cờ về trạng thái trước khi AI đi
   const s = snapshots.pop();
   if (s) {
     board = s.board;
-    redTurn = s.redTurn;
+    redTurn = s.redTurn; // Trả lại đúng lượt
     history = s.history;
     lastMove = s.lastMove;
     gameOver = s.gameOver;
@@ -3229,6 +3226,7 @@ function overrideLastAiMove() {
     blackMoveTime = s.blackMoveTime;
     matchStarted = true;
 
+    // 2. KHÔNG TỰ ĐỘNG CHỌN QUÂN: Reset hoàn toàn để bạn tự do chọn bất kỳ quân nào
     selected = null;
     legal = [];
     particles = [];
@@ -3247,25 +3245,19 @@ function overrideLastAiMove() {
     updateUI();
     requestRedraw();
 
-    // 2. Tự động chọn sẵn quân mà AI vừa dùng để bạn có thể bấm sang ô khác đi thay nó ngay lập tức!
-    const fromCoord = lastMoveRecord.move; // {fr, fc, tr, tc}
-    // Đảo ngược nước đi để chọn đúng quân AI vừa di chuyển về vị trí cũ
-    // (Lưu ý: Sau khi undo, board đã khôi phục về lúc chuẩn bị AI đi, nên quân nằm ở fr, fc)
-    const pieceAtOrigin = board[fromCoord.fr]?.[fromCoord.fc];
-    
-    if (pieceAtOrigin) {
-      selected = { r: fromCoord.fr, c: fromCoord.fc };
-      legal = legalMoves(fromCoord.fr, fromCoord.fc);
-      requestRedraw();
-      document.getElementById('gameMessage').textContent = `✏️ Đã thu hồi nước của AI. Hãy bấm chọn ô mới để đi thay cho AI!`;
-      toast('✏️ Đã thu hồi! Giờ bạn có thể chọn ô khác để đi thay cho AI.');
+    // 3. MỞ KHÓA LƯỢT: Chuyển quyền đi về phía BẠN
+    if (gameMode === 'pve') {
+      redTurn = !aiIsRed; 
     }
+
+    document.getElementById('gameMessage').textContent = `✏️ Đã thu hồi nước của AI. Bạn có thể chọn bất kỳ quân nào để đi!`;
+    toast('✏️ Đã thu hồi! Bạn có thể tự do bấm chọn quân khác trên bàn cờ.');
   } else {
     toast('Không thể sửa nước đi này!');
   }
 }
 
-// Gắn sự kiện cho nút vừa tạo
+// Gắn sự kiện cho nút Sửa nước của AI
 document.getElementById('overrideAiMove').onclick = overrideLastAiMove;
 
 </script>
