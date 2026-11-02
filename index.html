@@ -908,7 +908,6 @@ footer{color:#6d7b91;text-align:center;font-size:11.5px;padding:18px 0 4px;lette
   <button class="btn primary" id="playerRed">🔴 Bạn cầm Đỏ</button>
   <button class="btn primary" id="aiRed">🤖 AI cầm Đỏ</button>
   <button class="btn" id="undo">↶ Đi lại</button>
-  <button class="btn" id="overrideAiMove" style="background:#2a1f13;border-color:var(--gold);color:var(--gold-bright)">✏️ Sửa nước của AI</button> <!-- Thêm nút này -->
   <button class="btn" id="flip">⇅ Xoay bàn</button>
   <button class="btn danger" id="resign">⚑ Đầu hàng</button>
 </div>
@@ -2799,7 +2798,7 @@ canvas.addEventListener('pointerdown', e => {
     return;
   }
   if (gameOver || aiBusy) return;
-  //if (gameMode === 'pve' && (redTurn === aiIsRed)) return;
+  if (gameMode === 'pve' && (redTurn === aiIsRed)) return;
   if (gameMode === 'aiai') return;
 
   sounds.init();
