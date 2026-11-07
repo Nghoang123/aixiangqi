@@ -903,7 +903,7 @@ footer{color:#6d7b91;text-align:center;font-size:11px;padding:14px 0 4px;letter-
     <div class="mobile-icon-bar">
       <button class="icon-btn" id="mHintBtn" title="Gợi ý nước đi">💡</button>
       <button class="icon-btn" id="mUndoBtn" title="Đi lại nước vừa rồi">↶</button>
-      <button class="icon-btn" id="mOverrideBtn" title="Sửa nước của AI">✏️</button>
+      <button class="icon-btn" id="mOverrideBtn" title="Đi thay AI khi đến lượt AI hoặc sửa nước AI vừa đánh">✏️</button>
       <button class="icon-btn" id="mFlipBtn" title="Xoay bàn cờ">⇅</button>
       <button class="icon-btn menu-trigger" id="openDrawerBtn" title="Mở Menu & Biên bản">
         ☰
@@ -923,7 +923,7 @@ footer{color:#6d7b91;text-align:center;font-size:11px;padding:14px 0 4px;letter-
         </div>
       </div>
       <div style="text-align:right">
-        <div class="eyebrow">Nước đi</div>
+        <div class="eyebrow">Hiệp đấu</div>
         <strong id="plyCount" style="color:var(--gold-bright);font-size:16px">00</strong>
       </div>
     </div>
@@ -1077,7 +1077,8 @@ footer{color:#6d7b91;text-align:center;font-size:11px;padding:14px 0 4px;letter-
 
           <div class="ai-actions">
             <button class="btn primary" id="hintMove">💡 Gợi ý nước</button>
-            <button class="btn" id="overrideAiMove" title="Thu hồi nước của AI để bạn tự chọn nước đi khác cho AI">✏️ Sửa nước AI</button>
+            <button class="btn" id="overrideAiMove" title="Thu hồi nước AI vừa đánh để chọn nước khác">✏️ Sửa nước AI</button>
+            <button class="btn primary" id="manualAiTurn" style="grid-column:1 / -1" title="Chủ động đi một nước thay cho AI ngay trong lượt của AI">✋ Đi thay AI lượt này</button>
           </div>
           <div style="margin-top:8px">
             <button class="btn" id="toggleAiVsAi" style="width:100%; background:#162e24; border-color:rgba(70,195,150,0.35); color:#b8f5d8;">⏯️ Tạm dừng / Tiếp tục AI vs AI</button>
@@ -1916,6 +1917,7 @@ function startMatchNow() {
   updateStatusBadge();
   updateClockDisplay();
   startClockTimer();
+  updateManualAITurnControls();
   showCheckBanner('開局', 'KHAI CUỘC BẮT ĐẦU!', 'Thời gian đã bắt đầu đếm ngược', '', 1150);
   document.getElementById('gameMessage').textContent = gameMode === 'aiai' ? 'AI đang tự động đối kháng...' : (redTurn ? 'Đến lượt Đỏ đi quân.' : 'Đến lượt Đen đi quân.');
 
@@ -2842,7 +2844,7 @@ function postToWorker(msg) {
 }
 
 function startBackgroundPonder() {
-  if (!matchStarted || gameOver || aiBusy || gameMode !== 'pve') return;
+  if (!matchStarted || gameOver || aiBusy || gameMode !== 'pve' || isOverridingAIMove) return;
   if (redTurn === aiIsRed) return;
   postToWorker({
     cmd: 'start_ponder',
@@ -2869,9 +2871,11 @@ function makeMove(from, to, fromAI=false){
   }
 
   const piece=board[from.r][from.c],captured=board[to.r][to.c];if(!piece)return;
+  const wasManualAITurn = isOverridingAIMove;
   isOverridingAIMove = false;
   const m={fr:from.r,fc:from.c,tr:to.r,tc:to.c};
   pushHistory(m,piece,captured);
+  if (wasManualAITurn) history[history.length - 1].manualAI = true;
 
   board[to.r][to.c]=piece; board[from.r][from.c]=null;
   selected=null; legal=[]; hintMoveCoords=null;
@@ -3036,6 +3040,7 @@ canvas.addEventListener('pointerdown', e => {
 }, { passive: false });
 
 function updateUI(){
+  updateManualAITurnControls();
   const plyStr = String(history.length).padStart(2,'0');
   document.getElementById('plyCount').textContent = plyStr;
   document.getElementById('mPlyBadge').textContent = history.length;
@@ -3269,6 +3274,8 @@ if (aiWorker) {
       return;
     }
     const { result } = e.data;
+    // Chỉ nhận kết quả của yêu cầu đang chờ, không áp dụng phản hồi AI đã hủy.
+    if (!aiBusy) return;
     if (result && result.move) {
       const m = result.move;
       const nps = result.timeMs > 0 ? Math.round((result.nodes || 0) / result.timeMs) : 0;
@@ -3309,7 +3316,8 @@ function historyToUCIMoves() {
 }
 
 async function requestAI() {
-  if (!matchStarted || aiBusy || gameOver) return;
+  if (!matchStarted || aiBusy || gameOver || isOverridingAIMove) return;
+  if (gameMode === 'pve' && redTurn !== aiIsRed) return;
   if (gameMode === 'aiai' && aiVsAiPaused) return;
   stopBackgroundPonder();
   aiBusy = true;
@@ -3373,6 +3381,89 @@ function resignMatch() {
       subtitle: 'Kỳ thủ đã chủ động nhận thua ván đấu này.'
     });
   }
+}
+
+// Đi 1 nước THAY CHO AI ngay khi đến lượt AI (không cần AI đánh xong).
+function canControlAITurn() {
+  return matchStarted && !gameOver &&
+    (gameMode === 'aiai' || (gameMode === 'pve' && redTurn === aiIsRed));
+}
+
+function updateManualAITurnControls() {
+  const canTakeOver = canControlAITurn();
+  const manualBtn = document.getElementById('manualAiTurn');
+  const mobileBtn = document.getElementById('mOverrideBtn');
+  if (manualBtn) {
+    manualBtn.disabled = !canTakeOver;
+    manualBtn.textContent = isOverridingAIMove ? '🤖 Trả lượt lại cho AI' : '✋ Đi thay AI lượt này';
+  }
+  // Trên điện thoại: cùng một nút để đi thay AI (đang lượt AI),
+  // hoặc thu hồi nước AI vừa đánh (đang lượt người chơi).
+  if (mobileBtn) {
+    mobileBtn.textContent = canTakeOver ? (isOverridingAIMove ? '🤖' : '✋') : '✏️';
+    mobileBtn.title = canTakeOver
+      ? (isOverridingAIMove ? 'Trả lượt cho AI tiếp tục' : 'Tự đi một nước thay AI ngay bây giờ')
+      : 'Thu hồi và sửa nước vừa đánh của AI';
+  }
+}
+
+// Khi AI đang tìm kiếm, phải hủy Worker cũ trước khi mở bàn cờ,
+// tránh đáp án tính trên thế cờ cũ tự động ghi đè nước đi bằng tay.
+function cancelActiveAIForManual() {
+  if (!aiBusy) return true;
+  if (!aiWorker) { aiBusy = false; return true; }
+  try {
+    const replacement = new Worker('./pikafish-bridge.js');
+    replacement.onmessage = aiWorker.onmessage;
+    replacement.onerror = aiWorker.onerror;
+    const oldWorker = aiWorker;
+    aiWorker = replacement;
+    oldWorker.terminate();
+    aiBusy = false;
+    replacement.postMessage({ cmd: 'init_worker' });
+    return true;
+  } catch (err) {
+    console.error('Không thể hủy tác vụ AI:', err);
+    toast('Không thể dừng tính toán của AI. Hãy thử lại khi AI đánh xong.');
+    return false;
+  }
+}
+
+function toggleManualAITurn() {
+  closeMobileDrawer();
+  if (!matchStarted) { openReadyModal(); return; }
+  if (!canControlAITurn()) {
+    toast('Chỉ có thể đi thay AI khi đang đến lượt AI.');
+    return;
+  }
+  if (isOverridingAIMove) {
+    // Chưa đi quân nào: có thể trả lại quyền điều khiển cho AI.
+    isOverridingAIMove = false;
+    selected = null;
+    legal = [];
+    updateManualAITurnControls();
+    updateStatusBadge();
+    requestRedraw();
+    document.getElementById('gameMessage').textContent = '🤖 Đã trả lượt cho AI tự tính nước đi.';
+    toast('🤖 AI tiếp tục đi lượt này.');
+    requestAI();
+    return;
+  }
+
+  stopBackgroundPonder();
+  if (!cancelActiveAIForManual()) return;
+  isOverridingAIMove = true;
+  selected = null;
+  legal = [];
+  hintMoveCoords = null;
+  updateManualAITurnControls();
+  updateStatusBadge();
+  const sideName = redTurn ? 'Đỏ' : 'Đen';
+  document.getElementById('engineState').textContent = '✋ Bạn đang điều khiển nước đi của AI';
+  document.getElementById('gameMessage').textContent =
+    `✋ Đang đi thay AI (${sideName}): hãy chọn quân và vị trí hợp lệ trên bàn cờ.`;
+  toast(`✋ Đã nhận lượt ${sideName} của AI. Chọn quân để đi một nước!`);
+  requestRedraw();
 }
 
 // Tính năng cho phép người chơi thu hồi nước vừa đi của AI và tự đi thay cho AI
@@ -3451,7 +3542,11 @@ document.getElementById('mFlipBtn').onclick = flipBoard;
 document.getElementById('hintMove').onclick = getMoveHint;
 document.getElementById('mHintBtn').onclick = getMoveHint;
 document.getElementById('overrideAiMove').onclick = overrideLastAiMove;
-document.getElementById('mOverrideBtn').onclick = overrideLastAiMove;
+document.getElementById('manualAiTurn').onclick = toggleManualAITurn;
+document.getElementById('mOverrideBtn').onclick = () => {
+  if (canControlAITurn()) toggleManualAITurn();
+  else overrideLastAiMove();
+};
 document.getElementById('resign').onclick = resignMatch;
 document.getElementById('mResignBtn').onclick = resignMatch;
 
